@@ -11,12 +11,13 @@ namespace SVM.Tests
     public class BasicLoadingAndExecutionTests : BaseTests
     {
         [TestMethod]
+        [TestCategory("VM")]
         public void PushByValue()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 100u,
-                OpCodes.HLT
+                OpCodes.Push, OpModes.Value, 100u,
+                OpCodes.Halt
             });
 
             vm.Start();
@@ -26,14 +27,15 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void AddWithoutCarry()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 100u,
-                OpCodes.PSH, OpModes.Value, 200u,
-                OpCodes.ADD,
-                OpCodes.HLT
+                OpCodes.Push, OpModes.Value, 100u,
+                OpCodes.Push, OpModes.Value, 200u,
+                OpCodes.Add,
+                OpCodes.Halt
             });
 
             vm.Start();
@@ -43,31 +45,51 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void AddWithCarry()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 0xFFFFFFFFu,
-                OpCodes.PSH, OpModes.Value, 200u,
-                OpCodes.ADD,
-                OpCodes.HLT
+                OpCodes.Push, OpModes.Value, 0xFFFFFFFFu,
+                OpCodes.Push, OpModes.Value, 200u,
+                OpCodes.Add,
+                OpCodes.Halt
             });
 
             vm.Start();
 
             Assert.AreEqual(vm.Memory[1], 199u);
-            Assert.AreEqual(vm.Flag, (uint)(Flags.Carry));
+            Assert.AreEqual(vm.Flag, (Flags.Carry));
         }
 
         [TestMethod]
+        [TestCategory("VM")]
+        public void AddToZero()
+        {
+            var vm = LoadVM(new object[]
+            {
+                OpCodes.Push, OpModes.Value, 1u,
+                OpCodes.Push, OpModes.Value, 0xFFFFFFFFu,
+                OpCodes.Add, 
+                OpCodes.Halt
+            });
+
+            vm.Start();
+
+            Assert.AreEqual(vm.Memory[1], 0u);
+            Assert.IsTrue((vm.Flag & (Flags.Zero | Flags.Carry)) != 0);
+        }
+
+        [TestMethod]
+        [TestCategory("VM")]
         public void SubtractWithoutCarry()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 100u,
-                OpCodes.PSH, OpModes.Value, 200u,
-                OpCodes.SUB,
-                OpCodes.HLT
+                OpCodes.Push, OpModes.Value, 100u,
+                OpCodes.Push, OpModes.Value, 200u,
+                OpCodes.Subtract,
+                OpCodes.Halt
             });
 
             vm.Start();
@@ -77,29 +99,49 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void SubtractWithCarry()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 0xFFFFFFFFu,
-                OpCodes.PSH, OpModes.Value, 200u,
-                OpCodes.SUB,
-                OpCodes.HLT
+                OpCodes.Push, OpModes.Value, 0xFFFFFFFFu,
+                OpCodes.Push, OpModes.Value, 200u,
+                OpCodes.Subtract,
+                OpCodes.Halt
             });
 
             vm.Start();
 
             Assert.AreEqual(vm.Memory[1], 201u);
-            Assert.AreEqual(vm.Flag, (uint)(Flags.Carry));
+            Assert.AreEqual(vm.Flag, (Flags.Carry));
         }
 
         [TestMethod]
+        [TestCategory("VM")]
+        public void SubtractToZero()
+        {
+            var vm = LoadVM(new object[]
+            {
+                OpCodes.Push, OpModes.Value, 200u,
+                OpCodes.Push, OpModes.Value, 200u,
+                OpCodes.Subtract,
+                OpCodes.Halt
+            });
+
+            vm.Start();
+
+            Assert.AreEqual(vm.Memory[1], 0u);
+            Assert.IsTrue((vm.Flag & Flags.Zero) != 0);
+        }
+
+        [TestMethod]
+        [TestCategory("VM")]
         public void StoreByValue()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.STO, OpModes.Value, 0x8000, OpModes.Value, 2000u,
-                OpCodes.HLT
+                OpCodes.Store, OpModes.Value, 0x8000, OpModes.Value, 2000u,
+                OpCodes.Halt
             });
 
             vm.Start();
@@ -109,13 +151,14 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void StoreByReference()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.STO, OpModes.Value, 0x8000, OpModes.Value, 0x3000,
-                OpCodes.STO, OpModes.Reference, 0x8000, OpModes.Value, 2000u,
-                OpCodes.HLT
+                OpCodes.Store, OpModes.Value, 0x8000, OpModes.Value, 0x3000,
+                OpCodes.Store, OpModes.Reference, 0x8000, OpModes.Value, 2000u,
+                OpCodes.Halt
             });
 
             vm.Start();
@@ -125,13 +168,14 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void PushByReference()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.STO, OpModes.Value, 0x8000, OpModes.Value, 2000u,
-                OpCodes.PSH, OpModes.Reference, 0x8000u,
-                OpCodes.HLT
+                OpCodes.Store, OpModes.Value, 0x8000, OpModes.Value, 2000u,
+                OpCodes.Push, OpModes.Reference, 0x8000u,
+                OpCodes.Halt
             });
 
             vm.Start();
@@ -141,13 +185,14 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void StoreByStackValue()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 4000u,
-                OpCodes.STO, OpModes.Value, 0x8000, OpModes.StackValue,
-                OpCodes.HLT
+                OpCodes.Push, OpModes.Value, 4000u,
+                OpCodes.Store, OpModes.Value, 0x8000, OpModes.StackValue,
+                OpCodes.Halt
             });
 
             vm.Start();
@@ -157,15 +202,16 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void StoreByStackReference()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.STO, OpModes.Value, 0x7000, OpModes.Value, 0x0020,
-                OpCodes.PSH, OpModes.Value, 5000u,
-                OpCodes.PSH, OpModes.Value, 0x7000,
-                OpCodes.STO, OpModes.StackReference, OpModes.StackValue,
-                OpCodes.HLT
+                OpCodes.Store, OpModes.Value, 0x7000, OpModes.Value, 0x0020,
+                OpCodes.Push, OpModes.Value, 5000u,
+                OpCodes.Push, OpModes.Value, 0x7000,
+                OpCodes.Store, OpModes.StackReference, OpModes.StackValue,
+                OpCodes.Halt
             });
 
             vm.Start();
@@ -175,14 +221,15 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void Swap()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 5000u,
-                OpCodes.PSH, OpModes.Value, 6000u,
-                OpCodes.SWP,
-                OpCodes.HLT
+                OpCodes.Push, OpModes.Value, 5000u,
+                OpCodes.Push, OpModes.Value, 6000u,
+                OpCodes.Swap,
+                OpCodes.Halt
             });
 
             vm.Start();
@@ -193,16 +240,17 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void Subroutine()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.JMP, OpModes.Value, 0x1004,
-                OpCodes.HLT,
-                OpCodes.NOP,
-                OpCodes.PSH, OpModes.Value, 100m,
-                OpCodes.SWP,
-                OpCodes.RET
+                OpCodes.JumpToSubroutine, OpModes.Value, 0x1004,
+                OpCodes.Halt,
+                OpCodes.NoOperation,
+                OpCodes.Push, OpModes.Value, 100m,
+                OpCodes.Swap,
+                OpCodes.Return
             });
 
             vm.Start();
@@ -212,34 +260,36 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void Compare()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 1000u,
-                OpCodes.PSH, OpModes.Value, 1000u,
-                OpCodes.CMP, OpModes.StackValue, OpModes.StackValue,
-                OpCodes.HLT,
+                OpCodes.Push, OpModes.Value, 1000u,
+                OpCodes.Push, OpModes.Value, 1000u,
+                OpCodes.Compare, OpModes.StackValue, OpModes.StackValue,
+                OpCodes.Halt,
             });
 
             vm.Start();
 
-            Assert.IsTrue((vm.Flag & (uint)Flags.Equal) != 0);
+            Assert.IsTrue((vm.Flag & Flags.Zero) != 0);
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void JumpIfEqual()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 1000u,
-                OpCodes.PSH, OpModes.Value, 1000u,
-                OpCodes.CMP, OpModes.StackValue, OpModes.StackValue,
-                OpCodes.JEQ, OpModes.Value, 0x100D,
-                OpCodes.HLT,
-                OpCodes.PSH, OpModes.Value, 100u,
-                OpCodes.SWP,
-                OpCodes.RET
+                OpCodes.Push, OpModes.Value, 1000u,
+                OpCodes.Push, OpModes.Value, 1000u,
+                OpCodes.Compare, OpModes.StackValue, OpModes.StackValue,
+                OpCodes.JumpIfEqual, OpModes.Value, 0x100D,
+                OpCodes.Halt,
+                OpCodes.Push, OpModes.Value, 100u,
+                OpCodes.Swap,
+                OpCodes.Return
             });
 
             vm.Start();
@@ -247,18 +297,19 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void JumpIfNotEqual()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 1000u,
-                OpCodes.PSH, OpModes.Value, 1001u,
-                OpCodes.CMP, OpModes.StackValue, OpModes.StackValue,
-                OpCodes.JNE, OpModes.Value, 0x100D,
-                OpCodes.HLT,
-                OpCodes.PSH, OpModes.Value, 100u,
-                OpCodes.SWP,
-                OpCodes.RET
+                OpCodes.Push, OpModes.Value, 1000u,
+                OpCodes.Push, OpModes.Value, 1001u,
+                OpCodes.Compare, OpModes.StackValue, OpModes.StackValue,
+                OpCodes.JumpIfNotEqual, OpModes.Value, 0x100D,
+                OpCodes.Halt,
+                OpCodes.Push, OpModes.Value, 100u,
+                OpCodes.Swap,
+                OpCodes.Return
             });
 
             vm.Start();
@@ -266,15 +317,16 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
         public void ClearFlags()
         {
             var vm = LoadVM(new object[]
             {
-                OpCodes.PSH, OpModes.Value, 1000u,
-                OpCodes.PSH, OpModes.Value, 1000u,
-                OpCodes.CMP, OpModes.StackValue, OpModes.StackValue,
-                OpCodes.CLR,
-                OpCodes.HLT,
+                OpCodes.Push, OpModes.Value, 1000u,
+                OpCodes.Push, OpModes.Value, 1000u,
+                OpCodes.Compare, OpModes.StackValue, OpModes.StackValue,
+                OpCodes.ClearFlags,
+                OpCodes.Halt,
             });
 
             vm.Start();
@@ -283,6 +335,58 @@ namespace SVM.Tests
         }
 
         [TestMethod]
+        [TestCategory("VM")]
+        public void Increment()
+        {
+            var vm = LoadVM(new object[]
+            {
+                OpCodes.Push, OpModes.Value, 100u,
+                OpCodes.Increment,
+                OpCodes.Halt,
+            });
+
+            vm.Start();
+
+            Assert.AreEqual(vm.Memory[1], 101u);
+            Assert.AreEqual(vm.Flag, 0u);
+        }
+
+        [TestMethod]
+        [TestCategory("VM")]
+        public void Decrement()
+        {
+            var vm = LoadVM(new object[]
+            {
+                OpCodes.Push, OpModes.Value, 100u,
+                OpCodes.Decrement,
+                OpCodes.Halt,
+            });
+
+            vm.Start();
+
+            Assert.AreEqual(vm.Memory[1], 99u);
+            Assert.AreEqual(vm.Flag, 0u);
+        }
+
+        [TestMethod]
+        [TestCategory("VM")]
+        public void DecrementToZero()
+        {
+            var vm = LoadVM(new object[]
+            {
+                OpCodes.Push, OpModes.Value, 1u,
+                OpCodes.Decrement,
+                OpCodes.Halt,
+            });
+
+            vm.Start();
+
+            Assert.AreEqual(vm.Memory[1], 0u);
+            Assert.IsTrue((vm.Flag & Flags.Zero) != 0);
+        }
+
+        [TestMethod]
+        [TestCategory("VM")]
         public void DebugErrorCallback()
         {
             string debugMsg = null;

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.CodeDom;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -20,6 +21,18 @@ namespace SVM
             get { return _flag; }
         }
 
+        public uint StackPointer
+        {
+            get { return _sp; }
+        }
+
+        public uint InstructionPointer
+        {
+            get { return _ip; }
+        }
+
+        public SVMSStates State { get; set; }
+
         private uint[] _memory;
         private uint _flag;
         private uint _sp;
@@ -34,140 +47,188 @@ namespace SVM
             _sp = 0x0000;
             _ip = 0x1000;
             _errorCallback = errorCallback;
+
+            State = SVMSStates.Active;
         }
-        
+
         #region Execution
 
         public void Start()
         {
             try
             {
-                OpCodes instruction;
-
+                var instruction = OpCodes.NoOperation;
                 do
                 {
-                    uint operand1;
-                    uint operand2;
-                    uint result;
-                    instruction = (OpCodes)_memory[_ip];
-                    switch(instruction)
+                    if (State == SVMSStates.Active || State == SVMSStates.Step)
                     {
-                        case OpCodes.HLT:
-                        case OpCodes.NOP:
-                            /*
-                             * No operation
-                             */
-                            break;
-                        case OpCodes.PSH:
-                            /*
-                             * Push value onto the stack
-                             */
-                            Push(GetVal());
-                            break;
-                        case OpCodes.ADD:
-                            /*
-                             * Take top 2 operands from the stack, add them, and push the result
-                             * In the event of overflow, set the carry flag
-                             */
-                            operand1 = Pop();
-                            operand2 = Pop();
-                            result = operand1 + operand2;
+                        if (State == SVMSStates.Step)
+                            State = SVMSStates.Idle;
+                        
+                        #region Tick
 
-                            if (result < operand1)
-                                _flag |= (uint)Flags.Carry;
+                        uint operand1;
+                        uint operand2;
+                        uint result;
+                        instruction = _memory[_ip];
+                        switch (instruction)
+                        {
+                            case OpCodes.Halt:
+                            case OpCodes.NoOperation:
+                                /*
+                                 * No operation
+                                 */
+                                break;
+                            case OpCodes.Push:
+                                /*
+                                 * Push value onto the stack
+                                 */
+                                Push(GetVal());
+                                break;
+                            case OpCodes.Add:
+                                /*
+                                 * Take top 2 operands from the stack, add them, and push the result
+                                 * In the event of overflow, set the carry flag
+                                 */
+                                operand1 = Pop();
+                                operand2 = Pop();
+                                result = operand1 + operand2;
 
-                            Push(result);
-                            break;
-                        case OpCodes.SUB:
-                            /*
-                             * Take top 2 operands from the stack, subtract them, and push the result
-                             * In the event of overflow, set the carry flag
-                             */
-                            operand1 = Pop();
-                            operand2 = Pop();
-                            result = operand1 - operand2;
+                                if (result < operand1)
+                                    _flag |= Flags.Carry;
 
-                            if (result > operand1)
-                                _flag |= (uint)Flags.Carry;
+                                CheckForZeroResult(result);
+                                Push(result);
+                                break;
+                            case OpCodes.Subtract:
+                                /*
+                                 * Take top 2 operands from the stack, subtract them, and push the result
+                                 * In the event of overflow, set the carry flag
+                                 */
+                                operand1 = Pop();
+                                operand2 = Pop();
+                                result = operand1 - operand2;
 
-                            Push(result);
-                            break;
-                        case OpCodes.STO:
-                            /*
-                             * Stores operand 2 at address specified by operand 1
-                             */
-                            _memory[GetVal()] = GetVal();
-                            break;
-                        case OpCodes.JMP:
-                            /*
-                             * Push the instruction pointer onto the stack and jump to address specified by operand 1
-                             */
-                            operand1 = GetVal();
-                            Push(_ip);
-                            _ip = operand1;
-                            continue;
-                        case OpCodes.RET:
-                            /*
-                             * Returns 
-                             */
-                            _ip = Pop();
-                            break;
-                        case OpCodes.SWP:
-                            /*
-                             * Swaps the top 2 items on the stack
-                             */
-                            var tmp1 = Pop();
-                            var tmp2 = Pop();
-                            Push(tmp1);
-                            Push(tmp2);
-                            break;
-                        case OpCodes.CMP:
-                            /*
-                             *  Compares operand 1 with operand 2, if they are equal, set the Equal flag
-                             */
-                            operand1 = GetVal();
-                            operand2 = GetVal();
+                                if (result > operand1)
+                                    _flag |= Flags.Carry;
 
-                            if (operand1 == operand2)
-                                _flag |= (uint) Flags.Equal;
-                            break;
-                        case OpCodes.JEQ:
-                            /*
-                             *  Jump if the Equal flag is set 
-                             */
-                            operand1 = GetVal();
-                            if ((_flag & (uint) Flags.Equal) != 0)
-                            {
+                                CheckForZeroResult(result);
+                                Push(result);
+                                break;
+                            case OpCodes.Store:
+                                /*
+                                 * Stores operand 2 at address specified by operand 1
+                                 */
+                                _memory[GetVal()] = GetVal();
+                                break;
+                            case OpCodes.JumpToSubroutine:
+                                /*
+                                 * Push the instruction pointer onto the stack and jump to address specified by operand 1
+                                 */
+                                operand1 = GetVal();
                                 Push(_ip);
                                 _ip = operand1;
                                 continue;
-                            }
-                            break;
-                        case OpCodes.JNE:
-                            /*
-                             *  Jump if the Equal flag is not set 
-                             */
-                            operand1 = GetVal();
-                            if ((_flag & (uint) Flags.Equal) == 0)
-                            {
-                                Push(_ip);
+                            case OpCodes.Return:
+                                /*
+                                 * Returns 
+                                 */
+                                _ip = Pop();
+                                break;
+                            case OpCodes.Swap:
+                                /*
+                                 * Swaps the top 2 items on the stack
+                                 */
+                                var tmp1 = Pop();
+                                var tmp2 = Pop();
+                                Push(tmp1);
+                                Push(tmp2);
+                                break;
+                            case OpCodes.Compare:
+                                /*
+                                 *  Compares operand 1 with operand 2, if they are equal, set the Equal flag
+                                 *  Under the hood it performs a subtraction, and sets the Z flag if it's zero
+                                 */
+                                operand1 = GetVal();
+                                operand2 = GetVal();
+                                result = operand1 - operand2;
+                                CheckForZeroResult(result);
+                                break;
+                            case OpCodes.JumpIfEqual:
+                                /*
+                                 *  Jump if the Equal flag is set 
+                                 */
+                                operand1 = GetVal();
+                                if ((_flag & Flags.Zero) != 0)
+                                {
+                                    Push(_ip);
+                                    _ip = operand1;
+                                    continue;
+                                }
+                                break;
+                            case OpCodes.JumpIfNotEqual:
+                                /*
+                                 *  Jump if the Equal flag is not set 
+                                 */
+                                operand1 = GetVal();
+                                if ((_flag & Flags.Zero) == 0)
+                                {
+                                    Push(_ip);
+                                    _ip = operand1;
+                                    continue;
+                                }
+                                break;
+                            case OpCodes.ClearFlags:
+                                /*
+                                 * Clear the flags
+                                 */
+                                _flag = 0;
+                                break;
+                            case OpCodes.Increment:
+                                /*
+                                 * Increment the top item on the stack
+                                 */
+                                result = Pop();
+                                ++result;
+                                CheckForZeroResult(result);
+                                Push(result);
+                                break;
+                            case OpCodes.Decrement:
+                                /*
+                                 * Decrement the top item on the stack
+                                 */
+                                operand1 = Pop();
+                                result = operand1 - 1;
+
+                                if (result > operand1)
+                                {   // Decremented from zero
+                                    result = 1;
+                                    _flag |= Flags.Sign;
+                                }
+                                else
+                                {
+                                    CheckForZeroResult(result);
+                                }
+
+                                Push(result);
+                                break;
+                            case OpCodes.Jump:
+                                /*
+                                 * jump to address specified by operand 1
+                                 */
+                                operand1 = GetVal();
                                 _ip = operand1;
                                 continue;
-                            }
-                            break;
-                        case OpCodes.CLR:
-                            /*
-                             * Clear the flags
-                             */
-                            _flag = 0;
-                            break;
-                        default:
-                            throw new InvalidInstructionException($"{instruction.ToString("X")} is not a valid instruction");
+                            default:
+                                throw new InvalidInstructionException($"{instruction.ToString("X")} is not a valid instruction");
+                        }
+
+                        #endregion
+
+                        _ip++;
                     }
 
-
-                    _ip++;
-                } while (instruction != OpCodes.HLT);
+                } while (instruction != OpCodes.Halt);
             }
             catch (Exception ex)
             {
@@ -184,9 +245,9 @@ namespace SVM
 
         private uint GetVal()
         {
-            var mode = (OpModes) _memory[++_ip];
+            var mode = _memory[++_ip];
 
-            switch(mode)
+            switch (mode)
             {
                 case OpModes.Value:
                     return _memory[++_ip];
@@ -196,9 +257,21 @@ namespace SVM
                     return Pop();
                 case OpModes.StackReference:
                     return _memory[Pop()];
+                default:
+                    throw new InvalidModeException();
             }
+        }
 
-            throw new InvalidModeException();
+        private void CheckForZeroResult(uint result)
+        {
+            if (result == 0u)
+            {
+                _flag |= Flags.Zero;
+            }
+            else
+            {
+                _flag &= ~(Flags.Zero);
+            }
         }
 
         #endregion
@@ -239,10 +312,20 @@ namespace SVM
 
         public void Load(uint[] program)
         {
-            for(var i = 0; i < program.Length; i++)
+            for (var i = 0; i < program.Length; i++)
             {
                 _memory[_ip + i] = program[i];
             }
+        }
+
+        public void Load(byte[] program)
+        {
+            var input = new uint[program.Length/4];
+            for(var i = 0; i < program.Length; i += 4)
+            {
+                input[i/4] = BitConverter.ToUInt32(program, i);
+            }
+            Load(input);
         }
 
         #endregion
@@ -269,36 +352,46 @@ namespace SVM
 
     #region Decoding
 
-    public enum OpCodes
+    public static class OpCodes
     {
-        HLT = 0x0000,
-        NOP = 0x0001,
-        PSH = 0x0002,
-        ADD = 0x0003,
-        SUB = 0x0004,
-        STO = 0x0005,
-        JMP = 0x0006,
-        RET = 0x0007,
-        SWP = 0x0008,
-        CMP = 0x0009,
-        JEQ = 0x000A,
-        JNE = 0x000B,
-        CLR = 0x000C
+        [Description("HLT")] public const uint Halt             = 0x0000;
+        [Description("NOP")] public const uint NoOperation      = 0x0001;
+        [Description("PSH")] public const uint Push             = 0x0002;
+        [Description("ADD")] public const uint Add              = 0x0003;
+        [Description("SUB")] public const uint Subtract         = 0x0004;
+        [Description("STO")] public const uint Store            = 0x0005;
+        [Description("JSR")] public const uint JumpToSubroutine = 0x0006;
+        [Description("RET")] public const uint Return           = 0x0007;
+        [Description("SWP")] public const uint Swap             = 0x0008;
+        [Description("CMP")] public const uint Compare          = 0x0009;
+        [Description("JEQ")] public const uint JumpIfEqual      = 0x000A;
+        [Description("JNE")] public const uint JumpIfNotEqual   = 0x000B;
+        [Description("CLR")] public const uint ClearFlags       = 0x000C;
+        [Description("INC")] public const uint Increment        = 0x000D;
+        [Description("DEC")] public const uint Decrement        = 0x000E;
+        [Description("JMP")] public const uint Jump             = 0x000F;
     }
 
-    public enum OpModes
+    public static class OpModes
     {
-        Value = 0x0000,
-        Reference = 0x0001,
-        StackValue = 0x0002,
-        StackReference = 0x0003,
+        [Description("Value")] public const uint Value                   = 0x0000;
+        [Description("Reference")] public const uint Reference           = 0x0001;
+        [Description("StackValue")] public const uint StackValue         = 0x0002;
+        [Description("StackReference")] public const uint StackReference = 0x0003;
     }
 
-    public enum Flags
+    public static class Flags
     {
-        Carry = 1 << 0,
-        Zero = 1 << 1,
-        Equal = 1 << 2
+        [Description("Carry")] public const uint Carry = 1 << 0;
+        [Description("Zero")] public const uint Zero   = 1 << 1;
+        [Description("Sign")] public const uint Sign   = 1 << 2;
+    }
+
+    public enum SVMSStates
+    {
+        Active,
+        Step,
+        Idle
     }
 
     #endregion

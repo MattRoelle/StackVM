@@ -19,6 +19,14 @@ namespace SVM.Tests
             return vm;
         }
 
+        protected void AssertDeepEqual<T>(T[] o1, T[] o2)
+        {
+            Assert.AreEqual(o1.Length, o2.Length);
+            for (var i = 0; i < o1.Length; i++)
+            {
+                Assert.AreEqual(o1[i], o2[i]);
+            }
+        }
         #endregion
     }
 }
